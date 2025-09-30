@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: echo-postgres
+    environment:
+      POSTGRES_DB: echo_db
+      POSTGRES_USER: echo_user
+      POSTGRES_PASSWORD: echo_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U echo_user -d echo_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - echo-network
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: echo-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - echo-network
+
+  # Echo Proxy Service
+  echo-proxy:
+    build:
+      context: .
+      dockerfile: backend/echo-proxy/Dockerfile
+    container_name: echo-proxy
+    environment:
+      ECHO_MODE: RECORD
+      ECHO_SESSION_ID: default-session
+      ECHO_TARGET_URL: http://172.19.0.1:9000
+      ECHO_API_URL: http://echo-api:8082
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+      LOG_LEVEL: INFO
+    ports:
+      - "8080:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - echo-network
+    restart: unless-stopped
+
+  # Ingestor Service
+  ingestor-service:
+    build:
+      context: .
+      dockerfile: backend/ingestor-service/Dockerfile
+    container_name: ingestor-service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: echo_db
+      DB_USER: echo_user
+      DB_PASSWORD: echo_password
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+      LOG_LEVEL: INFO
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - echo-network
+    restart: unless-stopped
+
+  # Echo API Service
+  echo-api:
+    build:
+      context: .
+      dockerfile: backend/echo-api/Dockerfile
+    container_name: echo-api
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: echo_db
+      DB_USER: echo_user
+      DB_PASSWORD: echo_password
+      LOG_LEVEL: INFO
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - echo-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  echo-network:
+    driver: bridge

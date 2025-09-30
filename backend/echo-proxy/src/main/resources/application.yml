@@ -1,0 +1,39 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: echo-proxy
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+  cloud:
+    gateway:
+      routes:
+        - id: default_route
+          uri: ${ECHO_TARGET_URL:http://localhost:9000}
+          predicates:
+            - Path=/**
+
+echo:
+  proxy:
+    mode: ${ECHO_MODE:RECORD}
+    session-id: ${ECHO_SESSION_ID:default-session}
+    target-url: ${ECHO_TARGET_URL:http://localhost:9000}
+    echo-api-url: ${ECHO_API_URL:http://localhost:8082}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.echo.proxy: ${LOG_LEVEL:INFO}
+    org.springframework.cloud.gateway: INFO

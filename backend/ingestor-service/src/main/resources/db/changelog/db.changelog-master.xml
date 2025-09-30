@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="1" author="echo-platform">
+        <comment>Create recorded_traffic table</comment>
+        <createTable tableName="recorded_traffic">
+            <column name="id" type="BIGSERIAL" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="session_id" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="method" type="VARCHAR(10)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="path" type="VARCHAR(2048)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="query_params" type="VARCHAR(2048)"/>
+            <column name="request_headers" type="TEXT"/>
+            <column name="request_body" type="TEXT"/>
+            <column name="status_code" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="response_headers" type="TEXT"/>
+            <column name="response_body" type="TEXT"/>
+            <column name="timestamp" type="TIMESTAMP WITH TIME ZONE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="2" author="echo-platform">
+        <comment>Create indexes for performance</comment>
+        <createIndex indexName="idx_session_id" tableName="recorded_traffic">
+            <column name="session_id"/>
+        </createIndex>
+        <createIndex indexName="idx_session_method_path" tableName="recorded_traffic">
+            <column name="session_id"/>
+            <column name="method"/>
+            <column name="path"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

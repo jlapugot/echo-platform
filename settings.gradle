@@ -1,0 +1,5 @@
+rootProject.name = 'echo-platform'
+
+include 'backend:echo-proxy'
+include 'backend:echo-api'
+include 'backend:ingestor-service'
