@@ -8,18 +8,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
-import org.springframework.cloud.gateway.filter.factory.rewrite.CachedBodyOutputMessage;
-import org.springframework.cloud.gateway.support.BodyInserterContext;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.codec.HttpMessageReader;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.http.server.reactive.ServerHttpRequestDecorator;
 import org.springframework.http.server.reactive.ServerHttpResponseDecorator;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.BodyInserter;
-import org.springframework.web.reactive.function.BodyInserters;
-import org.springframework.web.reactive.function.server.ServerRequest;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -27,8 +24,8 @@ import reactor.core.publisher.Mono;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Global filter for recording HTTP traffic in RECORD mode.
@@ -41,7 +38,6 @@ public class RecordModeFilter implements GlobalFilter, Ordered {
 
     private final ProxyConfiguration proxyConfiguration;
     private final TrafficPublisher trafficPublisher;
-    private final List<HttpMessageReader<?>> messageReaders;
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
@@ -54,58 +50,111 @@ public class RecordModeFilter implements GlobalFilter, Ordered {
         String path = request.getPath().value();
         String queryParams = request.getURI().getQuery();
 
+        // Remove Accept-Encoding to prevent compressed responses from upstream
+        ServerHttpRequest modifiedRequest = exchange.getRequest().mutate()
+                .headers(headers -> headers.remove("Accept-Encoding"))
+                .build();
+
         // Capture request headers
         Map<String, String> requestHeaders = convertHeaders(request.getHeaders());
 
-        // Read request body
-        return ServerRequest.create(exchange, messageReaders)
-                .bodyToMono(String.class)
-                .defaultIfEmpty("")
-                .flatMap(requestBody -> {
-                    // Capture response
-                    ServerHttpResponseDecorator decoratedResponse = new ServerHttpResponseDecorator(exchange.getResponse()) {
-                        @Override
-                        public Mono<Void> writeWith(org.reactivestreams.Publisher<? extends DataBuffer> body) {
-                            Flux<DataBuffer> flux = Flux.from(body);
-                            return super.writeWith(flux.collectList().flatMapMany(dataBuffers -> {
-                                // Capture response body
-                                StringBuilder responseBody = new StringBuilder();
-                                dataBuffers.forEach(dataBuffer -> {
-                                    byte[] bytes = new byte[dataBuffer.readableByteCount()];
-                                    dataBuffer.read(bytes);
-                                    dataBuffer.readPosition(0); // Reset read position
-                                    responseBody.append(new String(bytes, StandardCharsets.UTF_8));
-                                });
+        // AtomicReference to store request body
+        AtomicReference<String> cachedRequestBody = new AtomicReference<>("");
 
-                                // Build traffic record
-                                TrafficRecord trafficRecord = TrafficRecord.builder()
-                                        .sessionId(proxyConfiguration.getSessionId())
-                                        .method(method)
-                                        .path(path)
-                                        .queryParams(queryParams)
-                                        .requestHeaders(requestHeaders)
-                                        .requestBody(requestBody)
-                                        .statusCode(getDelegate().getStatusCode().value())
-                                        .responseHeaders(convertHeaders(getDelegate().getHeaders()))
-                                        .responseBody(responseBody.toString())
-                                        .timestamp(Instant.now())
-                                        .build();
+        // For methods with body (POST, PUT, PATCH), capture and cache the body
+        if (hasBody(request.getMethod())) {
+            ServerHttpRequestDecorator requestDecorator = new ServerHttpRequestDecorator(modifiedRequest) {
+                @Override
+                public Flux<DataBuffer> getBody() {
+                    return super.getBody().collectList().flatMapMany(dataBuffers -> {
+                        // Read and cache the request body
+                        StringBuilder requestBody = new StringBuilder();
+                        dataBuffers.forEach(dataBuffer -> {
+                            byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                            dataBuffer.read(bytes);
+                            requestBody.append(new String(bytes, StandardCharsets.UTF_8));
+                            dataBuffer.readPosition(0); // Reset position for forwarding
+                        });
+                        cachedRequestBody.set(requestBody.toString());
 
-                                // Publish to RabbitMQ asynchronously
-                                try {
-                                    trafficPublisher.publishTraffic(trafficRecord);
-                                } catch (Exception e) {
-                                    log.error("Failed to publish traffic: {}", e.getMessage());
-                                }
+                        return Flux.fromIterable(dataBuffers);
+                    });
+                }
+            };
 
-                                return Flux.fromIterable(dataBuffers);
-                            }));
-                        }
-                    };
+            // Decorate response to capture response body
+            ServerHttpResponseDecorator responseDecorator = createResponseDecorator(
+                    exchange, method, path, queryParams, requestHeaders, cachedRequestBody
+            );
 
-                    // Continue with decorated response
-                    return chain.filter(exchange.mutate().response(decoratedResponse).build());
-                });
+            return chain.filter(exchange.mutate()
+                    .request(requestDecorator)
+                    .response(responseDecorator)
+                    .build());
+        } else {
+            // For GET/DELETE requests without body
+            ServerHttpResponseDecorator responseDecorator = createResponseDecorator(
+                    exchange, method, path, queryParams, requestHeaders, cachedRequestBody
+            );
+
+            return chain.filter(exchange.mutate()
+                    .request(modifiedRequest)
+                    .response(responseDecorator)
+                    .build());
+        }
+    }
+
+    private boolean hasBody(HttpMethod method) {
+        return method == HttpMethod.POST || method == HttpMethod.PUT || method == HttpMethod.PATCH;
+    }
+
+    private ServerHttpResponseDecorator createResponseDecorator(
+            ServerWebExchange exchange,
+            String method,
+            String path,
+            String queryParams,
+            Map<String, String> requestHeaders,
+            AtomicReference<String> requestBody) {
+
+        return new ServerHttpResponseDecorator(exchange.getResponse()) {
+            @Override
+            public Mono<Void> writeWith(org.reactivestreams.Publisher<? extends DataBuffer> body) {
+                Flux<DataBuffer> flux = Flux.from(body);
+                return super.writeWith(flux.collectList().flatMapMany(dataBuffers -> {
+                    // Capture response body
+                    StringBuilder responseBody = new StringBuilder();
+                    dataBuffers.forEach(dataBuffer -> {
+                        byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                        dataBuffer.read(bytes);
+                        dataBuffer.readPosition(0); // Reset read position
+                        responseBody.append(new String(bytes, StandardCharsets.UTF_8));
+                    });
+
+                    // Build traffic record
+                    TrafficRecord trafficRecord = TrafficRecord.builder()
+                            .sessionId(proxyConfiguration.getSessionId())
+                            .method(method)
+                            .path(path)
+                            .queryParams(queryParams)
+                            .requestHeaders(requestHeaders)
+                            .requestBody(requestBody.get())
+                            .statusCode(getDelegate().getStatusCode().value())
+                            .responseHeaders(convertResponseHeaders(getDelegate().getHeaders()))
+                            .responseBody(responseBody.toString())
+                            .timestamp(Instant.now())
+                            .build();
+
+                    // Publish to RabbitMQ asynchronously
+                    try {
+                        trafficPublisher.publishTraffic(trafficRecord);
+                    } catch (Exception e) {
+                        log.error("Failed to publish traffic: {}", e.getMessage());
+                    }
+
+                    return Flux.fromIterable(dataBuffers);
+                }));
+            }
+        };
     }
 
     /**
@@ -118,6 +167,23 @@ public class RecordModeFilter implements GlobalFilter, Ordered {
         Map<String, String> map = new HashMap<>();
         headers.forEach((key, values) -> {
             if (!values.isEmpty()) {
+                map.put(key, values.get(0));
+            }
+        });
+        return map;
+    }
+
+    /**
+     * Converts response HttpHeaders to a simple Map, excluding encoding headers.
+     * This prevents storing compressed/encoded response bodies.
+     *
+     * @param headers HttpHeaders object
+     * @return Map of header names to values (first value only)
+     */
+    private Map<String, String> convertResponseHeaders(HttpHeaders headers) {
+        Map<String, String> map = new HashMap<>();
+        headers.forEach((key, values) -> {
+            if (!values.isEmpty() && !key.equalsIgnoreCase("Content-Encoding")) {
                 map.put(key, values.get(0));
             }
         });

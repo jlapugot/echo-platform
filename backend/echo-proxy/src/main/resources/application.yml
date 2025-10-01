@@ -16,6 +16,8 @@ spring:
           uri: ${ECHO_TARGET_URL:http://localhost:9000}
           predicates:
             - Path=/**
+          filters:
+            - DedupeResponseHeader=Access-Control-Allow-Origin Access-Control-Allow-Credentials, RETAIN_FIRST
 
 echo:
   proxy:
