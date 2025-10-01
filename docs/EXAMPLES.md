@@ -40,18 +40,16 @@ curl -X POST http://localhost:8080/api/notifications \
   -d '{"userId": 123, "message": "Payment successful"}'
 ```
 
-**Step 2: Switch to REPLAY mode for development**
+**Step 2: Switch to REPLAY mode for development (no restart needed!)**
 
 ```bash
-# Stop echo-proxy
-docker-compose stop echo-proxy
+# Option 1: Use the dashboard at http://localhost:4200
+# Toggle the mode switch from RECORD (green) to REPLAY (orange)
 
-# Update environment
-export ECHO_MODE=REPLAY
-export ECHO_SESSION_ID=user-service-dev
-
-# Restart
-docker-compose up -d echo-proxy
+# Option 2: Use the API
+curl -X POST http://localhost:8080/api/mode \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"REPLAY"}'
 ```
 
 **Step 3: Develop offline**
@@ -63,6 +61,12 @@ Now my `user-service` can call Echo proxy and get realistic responses without ne
 # http://localhost:8080/api/payments -> returns recorded response
 # http://localhost:8080/api/notifications -> returns recorded response
 ```
+
+**Pro Tip:** Use the dashboard at http://localhost:4200 to:
+- Inspect recorded requests/responses
+- Switch modes with one click
+- Clear session data when needed
+- Test API endpoints interactively
 
 **Result:** Reduced my setup time from ~15 minutes (starting multiple services) to under a minute (just Echo).
 
@@ -100,8 +104,11 @@ integration-tests:
 
   before_script:
     - docker-compose up -d echo-api echo-proxy
-    - echo "ECHO_MODE=REPLAY" >> .env
-    - echo "ECHO_SESSION_ID=ci-integration-tests" >> .env
+    # Switch to REPLAY mode at runtime (no restart needed)
+    - |
+      curl -X POST http://localhost:8080/api/mode \
+        -H "Content-Type: application/json" \
+        -d '{"mode":"REPLAY"}'
 
   script:
     - ./gradlew :user-service:integrationTest
@@ -183,16 +190,18 @@ export ECHO_SESSION_ID=feature-user-profile
 **Switch between features instantly:**
 
 ```bash
-# Working on checkout
-export ECHO_MODE=REPLAY
-export ECHO_SESSION_ID=feature-checkout-flow
-./gradlew bootRun
+# Working on checkout - use dashboard or API
+curl -X POST http://localhost:8080/api/mode \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"REPLAY"}'
+# Then select "feature-checkout-flow" session in dashboard
 
-# Switch to user profile
-export ECHO_SESSION_ID=feature-user-profile
-docker-compose restart echo-proxy
-./gradlew bootRun
+# Switch to user profile - just change session via API
+# Update ECHO_SESSION_ID in docker-compose.yml and restart
+# OR use dashboard to view different session
 ```
+
+**Pro Tip:** Use the dashboard's session list to quickly switch between different feature recordings.
 
 **Result:** I can context-switch between features in seconds. Each feature has its own isolated test data.
 
@@ -267,8 +276,10 @@ Examples:
 curl http://localhost:8082/api/v1/sessions/my-session/traffic | \
   jq '.[] | select(.requestBody | contains("password"))'
 
-# Redact if found
-# DELETE and re-record with sanitized data
+# Delete if found - use dashboard or API
+curl -X DELETE http://localhost:8082/api/v1/sessions/my-session/traffic
+
+# Or use the dashboard's "Clear Session" button for easy cleanup
 ```
 
 ### Performance Tips

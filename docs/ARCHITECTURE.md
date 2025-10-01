@@ -14,7 +14,25 @@ Echo Platform is designed as a cloud-native microservices architecture following
 
 ## Service Breakdown
 
-### 1. echo-proxy (Gateway Layer)
+### 1. echo-dashboard (Presentation Layer)
+
+**Technology**: Angular 17 + Angular Material
+
+**Key Responsibilities**:
+- Interactive web UI for traffic management
+- Real-time mode switching (RECORD/REPLAY)
+- Traffic viewing and inspection
+- Try It page for API testing
+- Session and traffic deletion
+
+**Design Decisions**:
+- Standalone components for better tree-shaking
+- Angular Material for consistent UI/UX
+- RxJS for reactive data streams
+- HttpClient for API communication
+- Multi-stage Docker build (Node + Nginx)
+
+### 2. echo-proxy (Gateway Layer)
 
 **Technology**: Spring Cloud Gateway (Reactive)
 
@@ -48,7 +66,13 @@ Client Request → ReplayModeFilter → Query echo-api for match
                            Return Recorded Response (or 404)
 ```
 
-### 2. ingestor-service (Data Layer)
+**New in v1.1**:
+- Runtime mode switching via ModeController
+- No restart required for mode changes
+- Removes Accept-Encoding header to prevent compressed responses
+- Reactive chain using Optional pattern for reliable replay
+
+### 3. ingestor-service (Data Layer)
 
 **Technology**: Spring Boot + Spring Data JPA + RabbitMQ Consumer
 
@@ -72,7 +96,11 @@ RabbitMQ Queue → TrafficListener → TrafficIngestionService
                                     PostgreSQL (via Hibernate)
 ```
 
-### 3. echo-api (Query/API Layer)
+**New in v1.1**:
+- String sanitization to prevent PostgreSQL UTF-8 encoding errors
+- Removes null bytes and control characters from response data
+
+### 4. echo-api (Query/API Layer)
 
 **Technology**: Spring Boot + Spring Web + Spring Data JPA
 
@@ -83,10 +111,16 @@ RabbitMQ Queue → TrafficListener → TrafficIngestionService
 - Future: Dashboard UI backend
 
 **Design Decisions**:
-- Read-only operations on database
+- Read-only and delete operations on database
 - DTO pattern for clean API contracts
 - Custom JPQL queries for complex matching logic
 - JSON deserialization for header retrieval
+- @Transactional for delete operations
+
+**New in v1.1**:
+- DELETE endpoints for traffic management
+- Bulk delete for entire sessions
+- CORS configuration for frontend access
 
 **API Patterns**:
 - Public endpoints: `/api/v1/sessions/*`
@@ -263,9 +297,31 @@ Docker Compose includes health checks for:
 | Docker Compose | Kubernetes | Simpler local development |
 | Gradle | Maven | Better multi-project support |
 
+## Known Limitations
+
+### Authentication in Replay Mode
+
+**Current Behavior**: Replay mode matches requests based on:
+- Session ID
+- HTTP method
+- Request path
+- Query parameters
+
+**Limitation**: Authentication headers (e.g., `Authorization`, `API-Key`) are **not** considered in matching. This means:
+- Different users with different auth tokens will get the same cached response
+- Expired tokens will still return cached data
+- User A could potentially see User B's data if they make the same request
+
+**Workarounds**:
+1. Use separate session IDs per user/auth context
+2. Echo is best suited for single-user testing scenarios
+3. For multi-user scenarios, consider implementing auth header matching (see Future Enhancements)
+
+**Security Note**: For production-like testing with auth, ensure each user/token has a unique session ID.
+
 ## Future Enhancements
 
-1. **Dashboard UI**: React/Angular frontend for traffic visualization
+1. **Authentication Header Matching**: Include Authorization header in replay matching logic
 2. **Traffic Filtering**: Advanced query capabilities (date range, status code)
 3. **Traffic Editing**: Modify recorded responses before replay
 4. **Performance Testing**: Load testing mode with traffic amplification
@@ -275,6 +331,6 @@ Docker Compose includes health checks for:
 
 ---
 
-**Document Version**: 1.0.0
-**Last Updated**: 2025-09-30
+**Document Version**: 1.1.0
+**Last Updated**: 2025-10-01
 **Author**: Echo Platform Team

@@ -38,28 +38,30 @@ I was working on a few side projects that used microservices (typically 3-5 serv
 
 ## 🏗️ Architecture
 
-Echo consists of three microservices in an event-driven architecture:
+Echo consists of four services in an event-driven architecture:
 
 ```
-┌─────────────────┐
-│   echo-proxy    │  ← Your app connects here (Port 8080)
-│  (Record/Replay)│
-└────────┬────────┘
-         │ Publishes traffic
-         ▼
-┌─────────────────┐
-│   RabbitMQ      │  ← Async message queue
-└────────┬────────┘
+                         ┌─────────────────┐
+                         │  echo-dashboard │  ← Web UI (Port 4200)
+                         │   (Angular 17)  │
+                         └────────┬────────┘
+                                  │ HTTP
+               ┌──────────────────┴──────────────────┐
+               ▼                                     ▼
+┌─────────────────┐                         ┌─────────────────┐
+│   echo-proxy    │  ← Your app (Port 8080) │   echo-api      │  ← REST API (Port 8082)
+│  (Record/Replay)│                         │  (Query/Delete) │
+└────────┬────────┘                         └────────┬────────┘
+         │ Publishes traffic                         │ Queries
+         ▼                                           ▼
+┌─────────────────┐                         ┌─────────────────┐
+│   RabbitMQ      │  ← Async queue           │   PostgreSQL    │
+└────────┬────────┘                         └─────────────────┘
          │ Consumes
          ▼
-┌─────────────────┐      ┌─────────────────┐
-│ ingestor-service│◄────►│   PostgreSQL    │
-└─────────────────┘      └─────────────────┘
-                                 ▲
-                                 │ Queries
-                         ┌───────┴────────┐
-                         │   echo-api     │  ← REST API (Port 8082)
-                         └────────────────┘
+┌─────────────────┐
+│ ingestor-service│
+└─────────────────┘
 ```
 
 ### Components
@@ -69,6 +71,7 @@ Echo consists of three microservices in an event-driven architecture:
 | **echo-proxy** | Spring Cloud Gateway | Routes traffic (RECORD) or returns mocks (REPLAY) |
 | **ingestor-service** | Spring Boot + JPA | Consumes queue, persists to PostgreSQL |
 | **echo-api** | Spring Boot REST | Query API for recorded traffic |
+| **echo-dashboard** | Angular 17 + Material | Web UI for viewing/managing traffic |
 
 ## 🚀 Quick Start
 
@@ -95,19 +98,42 @@ curl http://localhost:8082/actuator/health  # echo-api
 ```
 
 **Access Points:**
-- Echo Proxy: `http://localhost:8080`
-- Echo API: `http://localhost:8082`
+- **Dashboard UI**: `http://localhost:4200` - Interactive web interface
+- Echo Proxy: `http://localhost:8080` - Proxy endpoint for your services
+- Echo API: `http://localhost:8082` - REST API for querying traffic
 - RabbitMQ Management: `http://localhost:15672` (guest/guest)
 
 ## 📖 Usage Guide
 
-### Recording Traffic (RECORD Mode)
+### Using the Dashboard (Recommended)
 
-1. **Configure the proxy** to point to your real service:
-   ```bash
-   export ECHO_MODE=RECORD
-   export ECHO_SESSION_ID=user-service-test
-   export ECHO_TARGET_URL=http://your-real-service:9000
+1. **Open the web interface:**
+   ```
+   http://localhost:4200
+   ```
+
+2. **Switch modes dynamically** using the toggle (no restart needed):
+   - **RECORD** (green) - Capture traffic from real services
+   - **REPLAY** (orange) - Serve cached responses
+
+3. **Try It page** - Interactive API testing:
+   - Enter URL and select HTTP method
+   - Send requests through the proxy
+   - View formatted responses with headers
+   - See mode-specific success messages
+
+4. **View recorded traffic:**
+   - Browse sessions and their record counts
+   - Inspect individual requests/responses
+   - Delete specific records or clear entire sessions
+
+### Recording Traffic (CLI)
+
+1. **Configure the proxy** to point to your real service (in docker-compose.yml):
+   ```yaml
+   ECHO_MODE: RECORD
+   ECHO_SESSION_ID: user-service-test
+   ECHO_TARGET_URL: http://your-real-service:9000
    ```
 
 2. **Send requests through Echo:**
@@ -115,9 +141,6 @@ curl http://localhost:8082/actuator/health  # echo-api
    # All requests are forwarded and recorded
    curl http://localhost:8080/api/users
    curl http://localhost:8080/api/users/123
-   curl -X POST http://localhost:8080/api/users \
-     -H "Content-Type: application/json" \
-     -d '{"name": "Alice"}'
    ```
 
 3. **View recorded traffic:**
@@ -125,23 +148,19 @@ curl http://localhost:8082/actuator/health  # echo-api
    curl http://localhost:8082/api/v1/sessions/user-service-test/traffic | jq
    ```
 
-### Replaying Traffic (REPLAY Mode)
+### Replaying Traffic (CLI)
 
-1. **Switch to REPLAY mode:**
+1. **Switch to REPLAY mode at runtime:**
    ```bash
-   # Update docker-compose.yml or set environment variable
-   export ECHO_MODE=REPLAY
-   export ECHO_SESSION_ID=user-service-test
+   curl -X POST http://localhost:8080/api/mode \
+     -H "Content-Type: application/json" \
+     -d '{"mode":"REPLAY"}'
    ```
+   Or update docker-compose.yml and restart.
 
-2. **Restart the proxy:**
+2. **Make the same requests - get cached responses:**
    ```bash
-   docker-compose restart echo-proxy
-   ```
-
-3. **Make the same requests - get recorded responses:**
-   ```bash
-   # Returns the recorded response, no real service needed!
+   # Returns the recorded response instantly, no real service needed!
    curl http://localhost:8080/api/users
    ```
 
@@ -163,9 +182,10 @@ Isolate service performance by removing network dependency on downstream service
 
 | Layer | Technology |
 |-------|-----------|
-| **Language** | Java 17 |
-| **Framework** | Spring Boot 3.2, Spring Cloud Gateway |
-| **Build** | Gradle 8.5 (Multi-project) |
+| **Backend Language** | Java 17 |
+| **Backend Framework** | Spring Boot 3.2, Spring Cloud Gateway |
+| **Frontend** | Angular 17 (Standalone Components), Angular Material |
+| **Build** | Gradle 8.5 (Multi-project), Angular CLI |
 | **Database** | PostgreSQL 15 |
 | **Messaging** | RabbitMQ 3.12 |
 | **ORM** | Spring Data JPA (Hibernate) |
@@ -175,29 +195,49 @@ Isolate service performance by removing network dependency on downstream service
 
 ## 📚 API Documentation
 
-### List all sessions
+### Echo API (Port 8082)
+
+**List all sessions:**
 ```http
 GET /api/v1/sessions
 ```
 
-### Get traffic for a session
+**Get traffic for a session:**
 ```http
 GET /api/v1/sessions/{sessionId}/traffic
 ```
 
+**Delete a specific traffic record:**
+```http
+DELETE /api/v1/traffic/{id}
+```
+
+**Delete all traffic for a session:**
+```http
+DELETE /api/v1/sessions/{sessionId}/traffic
+```
+
+### Echo Proxy Mode Control (Port 8080)
+
+**Get current mode:**
+```http
+GET /api/mode
+```
+
+**Switch mode (runtime, no restart needed):**
+```http
+POST /api/mode
+Content-Type: application/json
+
+{"mode": "RECORD"}  # or "REPLAY"
+```
+
 **Response Example:**
 ```json
-[
-  {
-    "id": 1,
-    "sessionId": "user-service-test",
-    "method": "GET",
-    "path": "/api/users",
-    "statusCode": 200,
-    "responseBody": "{\"users\": [...]}",
-    "timestamp": "2025-09-30T10:15:30Z"
-  }
-]
+{
+  "mode": "REPLAY",
+  "message": "Mode switched successfully"
+}
 ```
 
 Full API documentation: [docs/API.md](docs/API.md)
@@ -220,11 +260,17 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for full configuration option
 
 ### Project Structure
 ```
-echo-recorder/
+echo-platform/
 ├── backend/
 │   ├── echo-proxy/          # Spring Cloud Gateway
 │   ├── ingestor-service/    # Data persistence
 │   └── echo-api/            # REST API
+├── frontend/                # Angular dashboard
+│   ├── src/app/
+│   │   ├── components/      # UI components
+│   │   ├── services/        # API services
+│   │   └── models/          # TypeScript models
+│   └── Dockerfile
 ├── docs/                    # Documentation
 ├── build.gradle             # Root Gradle config
 ├── docker-compose.yml       # Development stack
@@ -271,17 +317,21 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for deta
 - [x] REST API for querying traffic
 - [x] Docker Compose setup
 - [x] Database migrations with Liquibase
+- [x] **Web UI dashboard** (Angular with interactive testing)
+- [x] **Runtime mode switching** (no restart required)
+- [x] **Delete functionality** (individual records and bulk session delete)
+- [x] **CORS support** for frontend integration
 
 **Ideas I'm Considering**
-- [ ] Simple web UI for viewing traffic (would be nice to have)
 - [ ] Better filtering/search capabilities
 - [ ] Session export/import
 - [ ] Request/response editing
+- [ ] Authentication header matching for replay mode
 
 **Maybe Someday**
 - [ ] Kubernetes examples (if there's interest)
 - [ ] gRPC support (would need to learn more about this first)
-- [ ] More documentation and examples
+- [ ] Traffic visualization and analytics
 
 ## 📄 License
 

@@ -54,7 +54,24 @@ USER_SERVICE_URL=http://echo-proxy:8080
 
 ### How do I handle authentication/authorization?
 
-Echo passes through all headers by default, including `Authorization`. However, for production use:
+**IMPORTANT**: Echo has a limitation with authentication in REPLAY mode.
+
+**RECORD mode**: All headers (including `Authorization`) are captured and stored correctly.
+
+**REPLAY mode limitation**: Matching does NOT consider authentication headers. Replay matches based on:
+- Session ID
+- HTTP method
+- Request path
+- Query parameters
+
+This means different users with different auth tokens will get the same cached response in REPLAY mode.
+
+**Workarounds**:
+1. **Use separate session IDs** for different users/auth contexts (recommended)
+2. Echo is best suited for single-user testing scenarios
+3. For production-like multi-user testing, consider using unique session IDs per user
+
+**For production use**:
 1. Secure Echo's own endpoints (echo-api)
 2. Consider redacting sensitive headers before storage
 3. Use network policies to restrict access
@@ -62,6 +79,24 @@ Echo passes through all headers by default, including `Authorization`. However, 
 ---
 
 ## Recording & Replay
+
+### Can I switch modes without restarting?
+
+**Yes!** As of v1.1, you can switch between RECORD and REPLAY modes at runtime:
+
+**Option 1: Web Dashboard**
+- Open http://localhost:4200
+- Use the mode toggle switch (green=RECORD, orange=REPLAY)
+- Changes take effect immediately
+
+**Option 2: API**
+```bash
+curl -X POST http://localhost:8080/api/mode \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"REPLAY"}'
+```
+
+No restart required!
 
 ### How accurate is REPLAY mode?
 
@@ -76,6 +111,8 @@ Echo passes through all headers by default, including `Authorization`. However, 
 - HTTP method
 - Path
 - Query parameters (optional exact match)
+
+**Note**: Authentication headers are NOT considered in matching. See "How do I handle authentication/authorization?" for details.
 
 ### What if a recorded request doesn't match?
 
@@ -92,10 +129,13 @@ Echo returns a 404 with a clear error message:
 
 ### Can I edit recorded responses?
 
-**Not yet** in the current version, but it's on the roadmap (v1.1). Current workaround:
+**Not yet** in the current version, but it's on the roadmap (v1.2). Current workaround:
 1. Export the session via API
 2. Modify the JSON
-3. Delete the old session from database
+3. Delete the old session via dashboard or API:
+   ```bash
+   curl -X DELETE http://localhost:8082/api/v1/sessions/{sessionId}/traffic
+   ```
 4. Re-import (manual SQL or future import endpoint)
 
 ### How long do recordings persist?
@@ -105,8 +145,14 @@ Recordings persist indefinitely in PostgreSQL unless you delete them. **Best pra
 - Archive old sessions
 - Regularly clean up test sessions
 
+**Delete via dashboard**: http://localhost:4200 - Use "Clear Session" button
+
+**Delete via API**:
 ```bash
-# Delete old sessions via SQL
+# Delete entire session
+curl -X DELETE http://localhost:8082/api/v1/sessions/{sessionId}/traffic
+
+# Or via SQL for bulk cleanup
 DELETE FROM recorded_traffic WHERE created_at < NOW() - INTERVAL '90 days';
 ```
 
@@ -315,8 +361,13 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for detailed guidelines. We welcome:
 
 See [CHANGELOG.md](../CHANGELOG.md) for version history and [README.md](../README.md) for the roadmap.
 
-Priority features:
-1. Web UI dashboard
+**Completed in v1.1**:
+1. ✅ Web UI dashboard (Angular)
+2. ✅ Runtime mode switching
+3. ✅ Delete functionality
+
+**Priority features**:
+1. Authentication header matching for replay
 2. Traffic filtering/search
 3. Request/response editing
 4. Session export/import
