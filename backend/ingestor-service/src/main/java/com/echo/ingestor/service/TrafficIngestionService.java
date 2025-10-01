@@ -31,15 +31,15 @@ public class TrafficIngestionService {
     public RecordedTraffic ingestTraffic(TrafficRecord trafficRecord) {
         try {
             RecordedTraffic entity = RecordedTraffic.builder()
-                    .sessionId(trafficRecord.getSessionId())
-                    .method(trafficRecord.getMethod())
-                    .path(trafficRecord.getPath())
-                    .queryParams(trafficRecord.getQueryParams())
+                    .sessionId(sanitizeString(trafficRecord.getSessionId()))
+                    .method(sanitizeString(trafficRecord.getMethod()))
+                    .path(sanitizeString(trafficRecord.getPath()))
+                    .queryParams(sanitizeString(trafficRecord.getQueryParams()))
                     .requestHeaders(convertMapToJson(trafficRecord.getRequestHeaders()))
-                    .requestBody(trafficRecord.getRequestBody())
+                    .requestBody(sanitizeString(trafficRecord.getRequestBody()))
                     .statusCode(trafficRecord.getStatusCode())
                     .responseHeaders(convertMapToJson(trafficRecord.getResponseHeaders()))
-                    .responseBody(trafficRecord.getResponseBody())
+                    .responseBody(sanitizeString(trafficRecord.getResponseBody()))
                     .timestamp(trafficRecord.getTimestamp())
                     .build();
 
@@ -52,6 +52,22 @@ public class TrafficIngestionService {
             log.error("Failed to ingest traffic record: {}", e.getMessage(), e);
             throw new RuntimeException("Failed to persist traffic record", e);
         }
+    }
+
+    /**
+     * Sanitizes a string by removing null bytes and other invalid UTF-8 characters
+     * that cause PostgreSQL encoding errors.
+     *
+     * @param input Input string
+     * @return Sanitized string
+     */
+    private String sanitizeString(String input) {
+        if (input == null) {
+            return null;
+        }
+        // Remove null bytes (0x00) and other control characters except newlines and tabs
+        return input.replaceAll("\\x00", "")
+                    .replaceAll("[\\x01-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
     }
 
     /**
