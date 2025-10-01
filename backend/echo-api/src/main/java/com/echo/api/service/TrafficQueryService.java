@@ -73,6 +73,29 @@ public class TrafficQueryService {
     }
 
     /**
+     * Deletes a specific traffic record by ID.
+     *
+     * @param id Traffic record ID
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteTrafficRecord(Long id) {
+        log.info("Deleting traffic record with id: {}", id);
+        repository.deleteById(id);
+    }
+
+    /**
+     * Deletes all traffic records for a specific session.
+     *
+     * @param sessionId Session identifier
+     */
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteSessionTraffic(String sessionId) {
+        log.info("Deleting all traffic for session: {}", sessionId);
+        int deletedCount = repository.deleteBySessionId(sessionId);
+        log.info("Deleted {} traffic records for session: {}", deletedCount, sessionId);
+    }
+
+    /**
      * Converts entity to DTO.
      *
      * @param entity RecordedTraffic entity

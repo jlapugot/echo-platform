@@ -68,4 +68,30 @@ public class TrafficController {
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
+
+    /**
+     * Deletes a specific traffic record by ID.
+     *
+     * @param id Traffic record ID
+     * @return 204 No Content on success
+     */
+    @DeleteMapping("/traffic/{id}")
+    public ResponseEntity<Void> deleteTrafficRecord(@PathVariable Long id) {
+        log.info("DELETE /api/v1/traffic/{}", id);
+        trafficQueryService.deleteTrafficRecord(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Deletes all traffic records for a specific session.
+     *
+     * @param sessionId Session identifier
+     * @return 204 No Content on success
+     */
+    @DeleteMapping("/sessions/{sessionId}/traffic")
+    public ResponseEntity<Void> deleteSessionTraffic(@PathVariable String sessionId) {
+        log.info("DELETE /api/v1/sessions/{}/traffic", sessionId);
+        trafficQueryService.deleteSessionTraffic(sessionId);
+        return ResponseEntity.noContent().build();
+    }
 }

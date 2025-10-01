@@ -26,6 +26,7 @@ public interface RecordedTrafficRepository extends JpaRepository<RecordedTraffic
     /**
      * Finds a matching recorded traffic entry for replay.
      * Matches based on session, method, path, and query parameters.
+     * Returns the most recent match.
      *
      * @param sessionId Session identifier
      * @param method HTTP method
@@ -33,11 +34,12 @@ public interface RecordedTrafficRepository extends JpaRepository<RecordedTraffic
      * @param queryParams Query parameters (can be null or empty)
      * @return Optional containing the first matching record
      */
-    @Query("SELECT rt FROM RecordedTraffic rt WHERE rt.sessionId = :sessionId " +
-            "AND rt.method = :method " +
-            "AND rt.path = :path " +
-            "AND (rt.queryParams = :queryParams OR (:queryParams IS NULL AND rt.queryParams IS NULL) OR (:queryParams = '' AND rt.queryParams IS NULL)) " +
-            "ORDER BY rt.timestamp DESC")
+    @Query(value = "SELECT * FROM recorded_traffic WHERE session_id = :sessionId " +
+            "AND method = :method " +
+            "AND path = :path " +
+            "AND (query_params = :queryParams OR (:queryParams IS NULL AND query_params IS NULL) OR (:queryParams = '' AND query_params IS NULL)) " +
+            "ORDER BY timestamp DESC LIMIT 1",
+            nativeQuery = true)
     Optional<RecordedTraffic> findMatchingTraffic(
             @Param("sessionId") String sessionId,
             @Param("method") String method,
@@ -60,4 +62,12 @@ public interface RecordedTrafficRepository extends JpaRepository<RecordedTraffic
      */
     @Query("SELECT DISTINCT rt.sessionId FROM RecordedTraffic rt ORDER BY rt.sessionId")
     List<String> findAllSessionIds();
+
+    /**
+     * Deletes all traffic records for a given session.
+     *
+     * @param sessionId Session identifier
+     * @return Number of deleted records
+     */
+    int deleteBySessionId(String sessionId);
 }
