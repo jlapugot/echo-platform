@@ -48,7 +48,7 @@ services:
     environment:
       ECHO_MODE: RECORD
       ECHO_SESSION_ID: default-session
-      ECHO_TARGET_URL: http://172.19.0.1:9000
+      ECHO_TARGET_URL: https://jsonplaceholder.typicode.com
       ECHO_API_URL: http://echo-api:8082
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
@@ -110,6 +110,20 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - echo-network
+    restart: unless-stopped
+
+  # Frontend Dashboard
+  echo-dashboard:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: echo-dashboard
+    ports:
+      - "4200:80"
+    depends_on:
+      - echo-api
     networks:
       - echo-network
     restart: unless-stopped
