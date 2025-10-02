@@ -95,4 +95,34 @@ public class ModeController {
         response.put("message", "Target URL updated successfully");
         return ResponseEntity.ok(response);
     }
+
+    /**
+     * Get current session ID
+     */
+    @GetMapping("/session")
+    public ResponseEntity<Map<String, String>> getSessionId() {
+        Map<String, String> response = new HashMap<>();
+        response.put("sessionId", proxyConfiguration.getSessionId());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Update session ID at runtime
+     */
+    @PostMapping("/session")
+    public ResponseEntity<Map<String, String>> updateSessionId(@RequestBody Map<String, String> request) {
+        String newSessionId = request.get("sessionId");
+
+        if (newSessionId == null || newSessionId.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Session ID is required"));
+        }
+
+        proxyConfiguration.setSessionId(newSessionId);
+        log.info("Updated session ID to: {}", newSessionId);
+
+        Map<String, String> response = new HashMap<>();
+        response.put("sessionId", newSessionId);
+        response.put("message", "Session ID updated successfully");
+        return ResponseEntity.ok(response);
+    }
 }

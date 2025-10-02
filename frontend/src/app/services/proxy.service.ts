@@ -29,6 +29,11 @@ export interface TargetUrlResponse {
   message?: string;
 }
 
+export interface SessionResponse {
+  sessionId: string;
+  message?: string;
+}
+
 /**
  * Service to send requests through Echo Proxy
  * Showcases: HTTP client usage, proxy pattern
@@ -121,5 +126,19 @@ export class ProxyService {
    */
   updateTargetUrl(targetUrl: string): Observable<TargetUrlResponse> {
     return this.http.post<TargetUrlResponse>(`${this.PROXY_URL}/api/mode/target`, { targetUrl });
+  }
+
+  /**
+   * Get current session ID
+   */
+  getSessionId(): Observable<SessionResponse> {
+    return this.http.get<SessionResponse>(`${this.PROXY_URL}/api/mode/session`);
+  }
+
+  /**
+   * Update session ID at runtime
+   */
+  updateSessionId(sessionId: string): Observable<SessionResponse> {
+    return this.http.post<SessionResponse>(`${this.PROXY_URL}/api/mode/session`, { sessionId });
   }
 }

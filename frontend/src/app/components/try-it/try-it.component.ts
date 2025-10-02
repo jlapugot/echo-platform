@@ -159,14 +159,25 @@ import { EchoApiService } from '../../services/echo-api.service';
 
             <mat-divider></mat-divider>
 
-            <div class="stats" *ngIf="sessionStats">
-              <h4>Current Session: default-session</h4>
-              <div class="stat-item">
+            <div class="stats">
+              <h4>Session Management</h4>
+              <div class="session-controls">
+                <mat-form-field class="session-field">
+                  <mat-label>Session ID</mat-label>
+                  <input matInput [(ngModel)]="sessionId" placeholder="default-session">
+                  <mat-icon matSuffix>folder</mat-icon>
+                </mat-form-field>
+                <button mat-raised-button color="accent" (click)="updateSessionId()" [disabled]="updatingSession">
+                  <mat-icon>update</mat-icon>
+                  Update
+                </button>
+              </div>
+              <div class="stat-item" *ngIf="sessionStats">
                 <mat-icon>storage</mat-icon>
                 <span>{{ sessionStats.recordCount }} requests recorded</span>
               </div>
               <div class="button-group">
-                <button mat-button color="primary" routerLink="/sessions/default-session">
+                <button mat-button color="primary" [routerLink]="'/sessions/' + sessionId">
                   <mat-icon>visibility</mat-icon>
                   View Traffic
                 </button>
@@ -427,6 +438,17 @@ import { EchoApiService } from '../../services/echo-api.service';
       color: #3f51b5;
     }
 
+    .session-controls {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .session-field {
+      flex: 1;
+    }
+
     .stat-item {
       display: flex;
       align-items: center;
@@ -573,6 +595,7 @@ export class TryItComponent implements OnInit {
 
   authHeader: string = '';
   targetUrl: string = '';
+  sessionId: string = 'default-session';
   response: any = null;
   error: string | null = null;
   loading = false;
@@ -580,6 +603,7 @@ export class TryItComponent implements OnInit {
   currentMode: 'RECORD' | 'REPLAY' = 'RECORD';
   switchingMode = false;
   updatingTarget = false;
+  updatingSession = false;
 
   constructor(
     private proxyService: ProxyService,
@@ -596,6 +620,7 @@ export class TryItComponent implements OnInit {
       next: (response) => {
         this.currentMode = response.mode as 'RECORD' | 'REPLAY';
         this.targetUrl = response.targetUrl || '';
+        this.sessionId = response.sessionId || 'default-session';
       },
       error: (err) => console.error('Failed to load current mode:', err)
     });
@@ -621,7 +646,7 @@ export class TryItComponent implements OnInit {
   loadSessionStats(): void {
     this.echoApiService.getSessions().subscribe({
       next: (sessions) => {
-        this.sessionStats = sessions.find(s => s.sessionId === 'default-session');
+        this.sessionStats = sessions.find(s => s.sessionId === this.sessionId);
       },
       error: (err) => console.error('Failed to load session stats:', err)
     });
@@ -757,12 +782,35 @@ export class TryItComponent implements OnInit {
     });
   }
 
-  clearSession(): void {
-    if (!confirm('Are you sure you want to delete all recorded traffic for this session? This cannot be undone.')) {
+  updateSessionId(): void {
+    if (!this.sessionId || !this.sessionId.trim()) {
+      this.error = 'Session ID cannot be empty';
       return;
     }
 
-    this.echoApiService.deleteSessionTraffic('default-session').subscribe({
+    this.updatingSession = true;
+    this.proxyService.updateSessionId(this.sessionId).subscribe({
+      next: (response) => {
+        console.log('Session ID updated successfully:', response.sessionId);
+        this.updatingSession = false;
+        this.error = null;
+        // Reload stats for new session
+        this.loadSessionStats();
+      },
+      error: (err) => {
+        console.error('Failed to update session ID:', err);
+        this.error = `Failed to update session ID: ${err.message}`;
+        this.updatingSession = false;
+      }
+    });
+  }
+
+  clearSession(): void {
+    if (!confirm(`Are you sure you want to delete all recorded traffic for session "${this.sessionId}"? This cannot be undone.`)) {
+      return;
+    }
+
+    this.echoApiService.deleteSessionTraffic(this.sessionId).subscribe({
       next: () => {
         console.log('Session cleared successfully');
         this.loadSessionStats();
