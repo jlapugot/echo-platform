@@ -55,8 +55,18 @@ export class ProxyService {
       });
     }
 
-    // Parse the target URL path from full URL
-    const urlPath = request.url.replace(/^https?:\/\/[^\/]+/, '');
+    // Parse the target URL properly handling query parameters
+    let urlPath = '';
+    let queryString = '';
+
+    try {
+      const url = new URL(request.url);
+      urlPath = url.pathname;
+      queryString = url.search; // Includes the '?' if present
+    } catch (e) {
+      // Fallback to regex if URL parsing fails
+      urlPath = request.url.replace(/^https?:\/\/[^\/]+/, '');
+    }
 
     // Send through proxy
     const options = {
@@ -65,7 +75,7 @@ export class ProxyService {
       responseType: 'text' as const
     };
 
-    const proxyUrl = `${this.PROXY_URL}${urlPath}`;
+    const proxyUrl = `${this.PROXY_URL}${urlPath}${queryString}`;
 
     switch (request.method.toUpperCase()) {
       case 'POST':
