@@ -22,13 +22,14 @@ public class ModeController {
     private final ProxyConfiguration proxyConfiguration;
 
     /**
-     * Get current proxy mode
+     * Get current proxy mode and configuration
      */
     @GetMapping
     public ResponseEntity<Map<String, String>> getMode() {
         Map<String, String> response = new HashMap<>();
         response.put("mode", proxyConfiguration.getMode().name());
         response.put("sessionId", proxyConfiguration.getSessionId());
+        response.put("targetUrl", proxyConfiguration.getTargetUrl());
         return ResponseEntity.ok(response);
     }
 
@@ -57,5 +58,41 @@ public class ModeController {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Invalid mode. Must be RECORD or REPLAY"));
         }
+    }
+
+    /**
+     * Get current target URL
+     */
+    @GetMapping("/target")
+    public ResponseEntity<Map<String, String>> getTargetUrl() {
+        Map<String, String> response = new HashMap<>();
+        response.put("targetUrl", proxyConfiguration.getTargetUrl());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Update target URL at runtime
+     */
+    @PostMapping("/target")
+    public ResponseEntity<Map<String, String>> updateTargetUrl(@RequestBody Map<String, String> request) {
+        String newTargetUrl = request.get("targetUrl");
+
+        if (newTargetUrl == null || newTargetUrl.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Target URL is required"));
+        }
+
+        // Basic URL validation
+        if (!newTargetUrl.startsWith("http://") && !newTargetUrl.startsWith("https://")) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Target URL must start with http:// or https://"));
+        }
+
+        proxyConfiguration.setTargetUrl(newTargetUrl);
+        log.info("Updated target URL to: {}", newTargetUrl);
+
+        Map<String, String> response = new HashMap<>();
+        response.put("targetUrl", newTargetUrl);
+        response.put("message", "Target URL updated successfully");
+        return ResponseEntity.ok(response);
     }
 }

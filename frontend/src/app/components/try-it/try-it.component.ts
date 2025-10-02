@@ -141,6 +141,24 @@ import { EchoApiService } from '../../services/echo-api.service';
 
             <mat-divider></mat-divider>
 
+            <div class="target-url-section">
+              <h4>Target URL (RECORD mode only)</h4>
+              <div class="target-url-controls">
+                <mat-form-field class="target-url-field">
+                  <mat-label>Backend API URL</mat-label>
+                  <input matInput [(ngModel)]="targetUrl" placeholder="https://api.example.com">
+                  <mat-icon matSuffix>language</mat-icon>
+                </mat-form-field>
+                <button mat-raised-button color="accent" (click)="updateTargetUrl()" [disabled]="updatingTarget">
+                  <mat-icon>update</mat-icon>
+                  Update
+                </button>
+              </div>
+              <mat-hint class="target-hint">This is where RECORD mode will forward requests</mat-hint>
+            </div>
+
+            <mat-divider></mat-divider>
+
             <div class="stats" *ngIf="sessionStats">
               <h4>Current Session: default-session</h4>
               <div class="stat-item">
@@ -373,6 +391,33 @@ import { EchoApiService } from '../../services/echo-api.service';
       font-size: 14px;
     }
 
+    .target-url-section {
+      padding: 16px 0;
+    }
+
+    .target-url-section h4 {
+      margin: 0 0 12px 0;
+      color: #3f51b5;
+      font-size: 14px;
+    }
+
+    .target-url-controls {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+
+    .target-url-field {
+      flex: 1;
+    }
+
+    .target-hint {
+      display: block;
+      margin-top: 4px;
+      font-size: 12px;
+      color: #666;
+    }
+
     .stats {
       padding: 16px 0;
     }
@@ -527,12 +572,14 @@ export class TryItComponent implements OnInit {
   };
 
   authHeader: string = '';
+  targetUrl: string = '';
   response: any = null;
   error: string | null = null;
   loading = false;
   sessionStats: any = null;
   currentMode: 'RECORD' | 'REPLAY' = 'RECORD';
   switchingMode = false;
+  updatingTarget = false;
 
   constructor(
     private proxyService: ProxyService,
@@ -548,6 +595,7 @@ export class TryItComponent implements OnInit {
     this.proxyService.getMode().subscribe({
       next: (response) => {
         this.currentMode = response.mode as 'RECORD' | 'REPLAY';
+        this.targetUrl = response.targetUrl || '';
       },
       error: (err) => console.error('Failed to load current mode:', err)
     });
@@ -681,6 +729,32 @@ export class TryItComponent implements OnInit {
     return this.currentMode === 'RECORD'
       ? 'All requests are being forwarded to the target and recorded to the database.'
       : 'Requests are being served from previously recorded responses in the database.';
+  }
+
+  updateTargetUrl(): void {
+    if (!this.targetUrl || !this.targetUrl.trim()) {
+      this.error = 'Target URL cannot be empty';
+      return;
+    }
+
+    if (!this.targetUrl.startsWith('http://') && !this.targetUrl.startsWith('https://')) {
+      this.error = 'Target URL must start with http:// or https://';
+      return;
+    }
+
+    this.updatingTarget = true;
+    this.proxyService.updateTargetUrl(this.targetUrl).subscribe({
+      next: (response) => {
+        console.log('Target URL updated successfully:', response.targetUrl);
+        this.updatingTarget = false;
+        this.error = null;
+      },
+      error: (err) => {
+        console.error('Failed to update target URL:', err);
+        this.error = `Failed to update target URL: ${err.message}`;
+        this.updatingTarget = false;
+      }
+    });
   }
 
   clearSession(): void {

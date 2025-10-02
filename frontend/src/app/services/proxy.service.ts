@@ -20,6 +20,12 @@ export interface ProxyResponse {
 export interface ModeResponse {
   mode: string;
   sessionId?: string;
+  targetUrl?: string;
+  message?: string;
+}
+
+export interface TargetUrlResponse {
+  targetUrl: string;
   message?: string;
 }
 
@@ -101,5 +107,19 @@ export class ProxyService {
    */
   switchMode(mode: 'RECORD' | 'REPLAY'): Observable<ModeResponse> {
     return this.http.post<ModeResponse>(`${this.PROXY_URL}/api/mode`, { mode });
+  }
+
+  /**
+   * Get current target URL
+   */
+  getTargetUrl(): Observable<TargetUrlResponse> {
+    return this.http.get<TargetUrlResponse>(`${this.PROXY_URL}/api/mode/target`);
+  }
+
+  /**
+   * Update target URL at runtime
+   */
+  updateTargetUrl(targetUrl: string): Observable<TargetUrlResponse> {
+    return this.http.post<TargetUrlResponse>(`${this.PROXY_URL}/api/mode/target`, { targetUrl });
   }
 }
