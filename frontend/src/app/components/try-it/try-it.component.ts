@@ -71,6 +71,13 @@ import { EchoApiService } from '../../services/echo-api.service';
                 <mat-icon matSuffix>link</mat-icon>
               </mat-form-field>
 
+              <mat-form-field class="full-width">
+                <mat-label>Authorization Header (Optional)</mat-label>
+                <input matInput [(ngModel)]="authHeader" placeholder="Bearer your-token-here">
+                <mat-icon matSuffix>lock</mat-icon>
+                <mat-hint>Add authentication token for testing protected endpoints</mat-hint>
+              </mat-form-field>
+
               <div class="quick-examples">
                 <span class="label">Quick examples:</span>
                 <button mat-stroked-button size="small" (click)="loadExample('users')">
@@ -162,6 +169,10 @@ import { EchoApiService } from '../../services/echo-api.service';
               Response
               <mat-chip [class]="'status-chip status-' + getStatusClass(response.status)">
                 {{ response.status }} {{ response.statusText }}
+              </mat-chip>
+              <mat-chip *ngIf="authHeader" class="auth-chip" color="accent">
+                <mat-icon>lock</mat-icon>
+                Authenticated
               </mat-chip>
             </mat-card-title>
           </mat-card-header>
@@ -432,6 +443,18 @@ import { EchoApiService } from '../../services/echo-api.service';
       font-weight: 600;
     }
 
+    .auth-chip {
+      margin-left: 8px;
+      font-weight: 500;
+    }
+
+    .auth-chip mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      margin-right: 4px;
+    }
+
     .status-success { background-color: #4caf50 !important; color: white !important; }
     .status-redirect { background-color: #2196f3 !important; color: white !important; }
     .status-client-error { background-color: #ff9800 !important; color: white !important; }
@@ -503,6 +526,7 @@ export class TryItComponent implements OnInit {
     body: ''
   };
 
+  authHeader: string = '';
   response: any = null;
   error: string | null = null;
   loading = false;
@@ -562,7 +586,16 @@ export class TryItComponent implements OnInit {
 
     const startTime = Date.now();
 
-    this.proxyService.sendRequest(this.request).subscribe({
+    // Add auth header if provided
+    const requestWithHeaders = { ...this.request };
+    if (this.authHeader) {
+      requestWithHeaders.headers = {
+        ...requestWithHeaders.headers,
+        'Authorization': this.authHeader
+      };
+    }
+
+    this.proxyService.sendRequest(requestWithHeaders).subscribe({
       next: (httpResponse) => {
         const duration = Date.now() - startTime;
 
