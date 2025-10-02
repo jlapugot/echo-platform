@@ -65,11 +65,17 @@ import { EchoApiService } from '../../services/echo-api.service';
                 </mat-select>
               </mat-form-field>
 
-              <mat-form-field class="full-width">
-                <mat-label>Target URL</mat-label>
-                <input matInput [(ngModel)]="request.url" placeholder="https://jsonplaceholder.typicode.com/users/1">
-                <mat-icon matSuffix>link</mat-icon>
-              </mat-form-field>
+              <div class="url-input-group">
+                <div class="base-url-display">
+                  <mat-icon>language</mat-icon>
+                  <span>{{ baseUrl }}</span>
+                </div>
+                <mat-form-field class="path-field">
+                  <mat-label>Endpoint Path</mat-label>
+                  <input matInput [(ngModel)]="requestPath" placeholder="/api/users/1?page=0">
+                  <mat-icon matSuffix>arrow_forward</mat-icon>
+                </mat-form-field>
+              </div>
 
               <mat-form-field class="full-width">
                 <mat-label>Authorization Header (Optional)</mat-label>
@@ -142,11 +148,11 @@ import { EchoApiService } from '../../services/echo-api.service';
             <mat-divider></mat-divider>
 
             <div class="target-url-section">
-              <h4>Target URL (RECORD mode only)</h4>
+              <h4>Target Backend (RECORD mode only)</h4>
               <div class="target-url-controls">
-                <mat-form-field class="target-url-field">
-                  <mat-label>Backend API URL</mat-label>
-                  <input matInput [(ngModel)]="targetUrl" placeholder="https://api.example.com">
+                <mat-form-field class="base-url-field">
+                  <mat-label>Base URL</mat-label>
+                  <input matInput [(ngModel)]="baseUrl" placeholder="https://api.example.com">
                   <mat-icon matSuffix>language</mat-icon>
                 </mat-form-field>
                 <button mat-raised-button color="accent" (click)="updateTargetUrl()" [disabled]="updatingTarget">
@@ -154,7 +160,7 @@ import { EchoApiService } from '../../services/echo-api.service';
                   Update
                 </button>
               </div>
-              <mat-hint class="target-hint">This is where RECORD mode will forward requests</mat-hint>
+              <mat-hint class="target-hint">Requests in RECORD mode will be forwarded to this backend</mat-hint>
             </div>
 
             <mat-divider></mat-divider>
@@ -355,6 +361,48 @@ import { EchoApiService } from '../../services/echo-api.service';
       font-size: 12px;
     }
 
+    .url-input-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .base-url-display {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background-color: #f5f5f5;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      color: #666;
+      font-size: 14px;
+      white-space: nowrap;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .base-url-display span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .base-url-display mat-icon {
+      font-size: 20px;
+      width: 20px;
+      height: 20px;
+      color: #3f51b5;
+    }
+
+    .path-field {
+      flex: 1;
+    }
+
     .send-button {
       width: 100%;
       height: 48px;
@@ -418,8 +466,9 @@ import { EchoApiService } from '../../services/echo-api.service';
       align-items: flex-start;
     }
 
-    .target-url-field {
+    .base-url-field {
       flex: 1;
+      min-width: 0;
     }
 
     .target-hint {
@@ -447,6 +496,7 @@ import { EchoApiService } from '../../services/echo-api.service';
 
     .session-field {
       flex: 1;
+      min-width: 0;
     }
 
     .stat-item {
@@ -594,7 +644,8 @@ export class TryItComponent implements OnInit {
   };
 
   authHeader: string = '';
-  targetUrl: string = '';
+  baseUrl: string = '';
+  requestPath: string = '/users/1';
   sessionId: string = 'default-session';
   response: any = null;
   error: string | null = null;
@@ -619,7 +670,7 @@ export class TryItComponent implements OnInit {
     this.proxyService.getMode().subscribe({
       next: (response) => {
         this.currentMode = response.mode as 'RECORD' | 'REPLAY';
-        this.targetUrl = response.targetUrl || '';
+        this.baseUrl = response.targetUrl || 'https://jsonplaceholder.typicode.com';
         this.sessionId = response.sessionId || 'default-session';
       },
       error: (err) => console.error('Failed to load current mode:', err)
@@ -659,8 +710,14 @@ export class TryItComponent implements OnInit {
 
     const startTime = Date.now();
 
+    // Combine base URL with path to create full URL
+    const fullUrl = this.baseUrl + this.requestPath;
+
     // Add auth header if provided
-    const requestWithHeaders = { ...this.request };
+    const requestWithHeaders = {
+      ...this.request,
+      url: fullUrl
+    };
     if (this.authHeader) {
       requestWithHeaders.headers = {
         ...requestWithHeaders.headers,
@@ -698,27 +755,23 @@ export class TryItComponent implements OnInit {
   loadExample(type: string): void {
     switch (type) {
       case 'users':
-        this.request = {
-          url: 'https://jsonplaceholder.typicode.com/users/1',
-          method: 'GET'
-        };
+        this.requestPath = '/users/1';
+        this.request.method = 'GET';
+        this.request.body = '';
         break;
       case 'posts':
-        this.request = {
-          url: 'https://jsonplaceholder.typicode.com/posts',
-          method: 'GET'
-        };
+        this.requestPath = '/posts';
+        this.request.method = 'GET';
+        this.request.body = '';
         break;
       case 'create':
-        this.request = {
-          url: 'https://jsonplaceholder.typicode.com/posts',
-          method: 'POST',
-          body: JSON.stringify({
-            title: 'Test Post from Echo Platform',
-            body: 'This is a demo request to show how Echo records traffic',
-            userId: 1
-          }, null, 2)
-        };
+        this.requestPath = '/posts';
+        this.request.method = 'POST';
+        this.request.body = JSON.stringify({
+          title: 'Test Post from Echo Platform',
+          body: 'This is a demo request to show how Echo records traffic',
+          userId: 1
+        }, null, 2);
         break;
     }
   }
@@ -757,20 +810,21 @@ export class TryItComponent implements OnInit {
   }
 
   updateTargetUrl(): void {
-    if (!this.targetUrl || !this.targetUrl.trim()) {
-      this.error = 'Target URL cannot be empty';
+    if (!this.baseUrl || !this.baseUrl.trim()) {
+      this.error = 'Base URL cannot be empty';
       return;
     }
 
-    if (!this.targetUrl.startsWith('http://') && !this.targetUrl.startsWith('https://')) {
-      this.error = 'Target URL must start with http:// or https://';
+    if (!this.baseUrl.startsWith('http://') && !this.baseUrl.startsWith('https://')) {
+      this.error = 'Base URL must start with http:// or https://';
       return;
     }
 
     this.updatingTarget = true;
-    this.proxyService.updateTargetUrl(this.targetUrl).subscribe({
+    this.proxyService.updateTargetUrl(this.baseUrl).subscribe({
       next: (response) => {
         console.log('Target URL updated successfully:', response.targetUrl);
+        this.baseUrl = response.targetUrl;
         this.updatingTarget = false;
         this.error = null;
       },
